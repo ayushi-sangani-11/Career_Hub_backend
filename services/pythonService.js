@@ -27,9 +27,8 @@ const analyzeResumeWithPython = async (filePath, textContent = '') => {
   } catch (error) {
     console.warn(`[Python AI Service Warning]: ${error.message}. Executing Javascript NLP fallback engine.`);
     
-    // Javascript fallback NLP logic if python service is unavailable
     const text = textContent || (filePath ? fs.readFileSync(filePath, 'utf8') : '');
-    const sampleSkills = ['React', 'JavaScript', 'Node.js', 'MongoDB', 'HTML', 'CSS', 'Git', 'Express'];
+    const sampleSkills = ['React', 'JavaScript', 'Node.js', 'MongoDB', 'HTML', 'CSS', 'Git', 'Express.js', 'Java', 'Python', 'SQL', 'AWS', 'Docker', 'Figma', 'SEO'];
     const detected = sampleSkills.filter(s => text.toLowerCase().includes(s.toLowerCase()));
 
     return {
@@ -53,13 +52,84 @@ const analyzeResumeWithPython = async (filePath, textContent = '') => {
 };
 
 /**
+ * Primary Core Feature: Analyzes candidate resume specifically against a target job's requirements.
+ * RESUME + SPECIFIC JOB REQUIREMENTS = JOB-SPECIFIC SKILL GAP REPORT
+ */
+const analyzeJobResumeWithPython = async (filePath, textContent, jobDetails) => {
+  try {
+    const formData = new FormData();
+    if (filePath && fs.existsSync(filePath)) {
+      formData.append('file', fs.createReadStream(filePath));
+    } else {
+      formData.append('resume_text', textContent || 'Candidate Resume Text');
+    }
+
+    formData.append('job_title', jobDetails.title || 'Job Role');
+    formData.append('required_skills', JSON.stringify(jobDetails.requiredSkills || []));
+    formData.append('preferred_skills', JSON.stringify(jobDetails.preferredSkills || []));
+    formData.append('job_description', jobDetails.description || '');
+
+    const response = await axios.post(`${PYTHON_URL}/analyze-resume-job`, formData, {
+      headers: formData.getHeaders(),
+      timeout: 10000
+    });
+
+    return response.data;
+  } catch (error) {
+    console.warn(`[Python AI Service Warning for Job Resume]: ${error.message}. Running fallback Job Resume Analysis Engine.`);
+
+    const resumeText = textContent || (filePath ? fs.readFileSync(filePath, 'utf8') : '');
+    const rLower = resumeText.toLowerCase();
+
+    const reqSkills = jobDetails.requiredSkills || [];
+    const prefSkills = jobDetails.preferredSkills || [];
+
+    const matched = [];
+    const missing = [];
+    const partial = [];
+
+    reqSkills.forEach(skill => {
+      if (rLower.includes(skill.toLowerCase())) {
+        matched.push(skill);
+      } else {
+        missing.push(skill);
+      }
+    });
+
+    prefSkills.forEach(skill => {
+      if (rLower.includes(skill.toLowerCase())) {
+        if (!matched.includes(skill)) matched.push(skill);
+      } else if (!missing.includes(skill)) {
+        missing.push(skill);
+      }
+    });
+
+    const total = reqSkills.length || 1;
+    const matchPct = Math.min(98, Math.max(15, Math.round((matched.length / total) * 100)));
+
+    return {
+      jobTitle: jobDetails.title || 'Job Role',
+      matchPercentage: matchPct,
+      matchedCount: matched.length,
+      totalRequired: total,
+      matchedSkills: matched,
+      missingSkills: missing,
+      partialSkills: partial,
+      detectedResumeSkills: matched,
+      recommendations: missing.map(m => `Learn ${m}: Listed as required technology for ${jobDetails.title}`),
+      disclaimer: 'This match percentage is an AI-assisted skill comparison based on job requirements and resume text, not a guarantee of employment.'
+    };
+  }
+};
+
+/**
  * Compares user skills against target career role requirements.
  */
 const getSkillGapFromPython = async (skills, targetRole) => {
   try {
     const response = await axios.post(`${PYTHON_URL}/skill-gap`, {
       skills,
-      targetRole: targetRole || 'Full Stack Developer'
+      targetRole: targetRole || 'Software Developer'
     }, { timeout: 5000 });
 
     return response.data;
@@ -67,13 +137,15 @@ const getSkillGapFromPython = async (skills, targetRole) => {
     console.warn(`[Python AI Service Warning]: ${error.message}. Running fallback skill gap engine.`);
     
     const roleSkillsMap = {
-      'Full Stack Developer': ['HTML', 'CSS', 'JavaScript', 'React', 'Node.js', 'Express', 'MongoDB', 'Git', 'Docker', 'AWS'],
-      'Frontend Developer': ['HTML', 'CSS', 'JavaScript', 'React', 'Tailwind CSS', 'Git', 'Redux', 'TypeScript'],
-      'Backend Developer': ['Node.js', 'Express', 'MongoDB', 'SQL', 'REST API', 'Docker', 'Git', 'Redis'],
-      'Python AI Engineer': ['Python', 'FastAPI', 'Machine Learning', 'NLP', 'Pandas', 'Git', 'PyTorch']
+      'Software Developer': ['Java', 'Python', 'SQL', 'Git', 'Data Structures'],
+      'MERN Developer': ['HTML', 'CSS', 'JavaScript', 'React', 'Node.js', 'Express.js', 'MongoDB', 'Git'],
+      'Frontend Developer': ['HTML', 'CSS', 'JavaScript', 'React', 'Tailwind CSS', 'Git'],
+      'Backend Developer': ['Node.js', 'Express.js', 'MongoDB', 'SQL', 'REST API', 'Git'],
+      'Data Analyst': ['Python', 'SQL', 'Pandas', 'Excel', 'Data Analysis'],
+      'Cloud Engineer': ['AWS', 'Docker', 'Linux', 'Networking', 'Git']
     };
 
-    const required = roleSkillsMap[targetRole] || roleSkillsMap['Full Stack Developer'];
+    const required = roleSkillsMap[targetRole] || roleSkillsMap['Software Developer'];
     const userSet = new Set((skills || []).map(s => s.toLowerCase()));
     
     const strong = required.filter(s => userSet.has(s.toLowerCase()));
@@ -81,7 +153,7 @@ const getSkillGapFromPython = async (skills, targetRole) => {
     const readiness = Math.round((strong.length / required.length) * 100);
 
     return {
-      targetRole: targetRole || 'Full Stack Developer',
+      targetRole: targetRole || 'Software Developer',
       readinessScore: readiness || 75,
       strongSkills: strong,
       missingRequiredSkills: missing.slice(0, 3),
@@ -160,6 +232,7 @@ const getRecommendationsFromPython = async (userSkills, targetRole, jobs) => {
 
 module.exports = {
   analyzeResumeWithPython,
+  analyzeJobResumeWithPython,
   getSkillGapFromPython,
   getJobMatchFromPython,
   getRecommendationsFromPython
