@@ -1,8 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const { getJobs, getJobById, getRecommendations, createJob, updateJob, deleteJob } = require('../controllers/jobController');
+const { getJobs, getJobById, getRecommendations, analyzeJobResume, getUserAnalyses, getAnalysisById, createJob, updateJob, deleteJob } = require('../controllers/jobController');
 const { protect } = require('../middleware/auth');
 const { adminOnly } = require('../middleware/admin');
+const upload = require('../middleware/upload');
 
 // Optional auth helper to extract user if token present for public routes
 const optionalProtect = (req, res, next) => {
@@ -14,7 +15,12 @@ const optionalProtect = (req, res, next) => {
 
 router.get('/', optionalProtect, getJobs);
 router.get('/recommendations', protect, getRecommendations);
+router.get('/analyses/user', protect, getUserAnalyses);
+router.get('/analyses/:id', protect, getAnalysisById);
 router.get('/:id', optionalProtect, getJobById);
+
+// Analyze Resume specifically for target job
+router.post('/:id/analyze-resume', protect, upload.single('file'), analyzeJobResume);
 
 // Admin Routes
 router.post('/', protect, adminOnly, createJob);
