@@ -14,9 +14,14 @@ const jobSchema = new mongoose.Schema({
   responsibilities: [{ type: String }],
   requiredSkills: [{ type: String, required: true }],
   preferredSkills: [{ type: String }],
+  education: { type: String, default: 'Bachelor Degree' },
   experience: { type: String, default: '0-2 Years' },
+  applicationUrl: { type: String, default: '' },
   deadline: { type: Date },
-  category: { type: String, default: 'Software Engineering' },
+  category: {
+    type: String,
+    default: 'Software Development'
+  },
   status: {
     type: String,
     enum: ['active', 'inactive'],
